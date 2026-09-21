@@ -1,45 +1,57 @@
 # ARL Lighting Lab
 
-ARL (Adaptive Radiance Ledger) is an experimental real-time lighting architecture for a custom game engine. The core idea is to treat lighting as persistent world knowledge with confidence, variability, age, and lighting debt, then spend update work where the solution is changing or uncertain instead of refreshing the entire light field every frame.
+ARL (Adaptive Radiance Ledger) is an experimental real-time lighting architecture for a custom game engine.
 
-## Current build — v1.8 Multi-Scale Detail Radiance
+The core idea is to treat lighting as persistent world knowledge — radiance, confidence, variability, age, visibility and **Lighting Debt** — then spend GPU/CPU work where the lighting solution is changing or uncertain instead of refreshing everything every frame.
 
-v1.8 is intentionally a **real solver change**, not another UI pass. It combines:
+## Current build — ARL v2.0 Reconstruction Renderer
 
-- a persistent directional world radiance ledger for broad, stable GI;
-- directional visibility moments and probe relocation/classification;
-- a new short-range surface gather that traces local one-bounce transport at the shaded point to recover detail the coarse world grid cannot represent;
-- smoother contact occlusion instead of multiplying the entire GI solution by coarse hard masks;
-- increased world probe density (18×9×18 versus 16×8×16 in v1.7);
-- chroma-preserving tone mapping for stronger warm/cool bounce separation;
-- crisp exact direct shadows in the main ARL path;
-- visible emissive light sources, moving lights, volumetric scattering, material/roughness tests, pitch-black tests, leak torture tests, and a fine-detail torture gallery.
+v2.0 is the first build where ARL stops rendering the final image directly from the world probe field.
 
-### Run
+The current renderer is layered:
 
-On Windows, run `Launch_ARL_v1_8.bat`. It starts a local HTTP server at `http://127.0.0.1:8765/`.
+- authoritative direct lighting and crisp direct shadows;
+- persistent directional world radiance;
+- fine short-range surface GI for local bounce/contact detail;
+- visibility moments and exact near-field rejection;
+- camera-tracking world volume for open-world testing;
+- moving-light and explosion debt scheduling;
+- mirror/specular path kept separate from diffuse GI;
+- **screen-space spatio-temporal reconstruction** for indirect lighting;
+- history reprojection using world position and surface normal validation;
+- history/variance clamp to prevent stale-light smearing;
+- edge-aware spatial denoising that filters indirect light only;
+- shared Direct/ARL exposure, tone mapping and color processing for honest A/B tests;
+- High / Balanced / Performance reconstruction resolutions;
+- global directional sun, volumetric scattering, mirror tests and open-world stress scenes;
+- automated QA tour and adaptive-vs-full-refresh benchmark.
 
-You can also open `index.html` directly, but localhost avoids browser `file://` security quirks.
+### New benchmark scene
 
-## Recommended comparisons
+`ARL 2.0 — Production benchmark district` is a connected indoor/outdoor test environment with interior/outdoor transitions, open sunlight, deep cover, continuous geometry, warm and cool dynamic lights, mixed materials, a near-perfect mirror, moving lights, and camera-tracking GI.
 
-1. `Direct Baseline` vs `ARL v1.8 — Multi-Scale Hybrid`
-2. `ARL v1.8 — Fine GI Only` vs `ARL v1.8 — World GI Only`
-3. `ARL v1.8 — Fine/World Difference`
-4. Preset: `Fine-detail torture gallery`
-5. Preset: `Pitch-black light ramp`
-6. Preset: `Thin-wall leak torture`
-7. Preset: `Moving-light arena`
+### Reconstruction debug views
 
-## Architecture direction
+The reconstruction section can show Final composite, Raw indirect, Denoised indirect, or Direct/material base. This makes it possible to tell whether an artifact comes from light transport or reconstruction.
 
-ARL is evolving away from a single uniform-probe answer toward a multi-scale renderer:
+## Architecture
 
-- authoritative direct visibility/shadows;
-- fine near-field transport for contacts, gaps, corners, and local color bounce;
-- persistent world-space radiance for room/building scale transport;
-- adaptive lighting debt scheduling;
-- visibility moments / classification / relocation;
-- volumetric lighting as a separate participating-media representation.
+Direct lighting stays authoritative. Persistent world radiance plus fine local surface GI produce a raw indirect buffer. That buffer is temporally reprojected with world-position/normal rejection, history-clamped, edge-aware filtered, and then recombined with the direct/material base through the same final tone/color path used by the Direct baseline.
 
-The next major research directions are true hierarchical radiance cascades, local light reservoirs, richer directional encoding, and GPU compute migration.
+Lighting Debt remains the scheduler for persistent world updates and is intended to expand into the scheduler for screen probes, radiance-cache entries, reflections, volumetrics and future light/path reservoirs.
+
+## Validation
+
+The v2.0 source passes JavaScript syntax validation. It has also been loaded in Chromium with WebGL2 through ANGLE/SwiftShader in an Xvfb test environment. The surface shader, temporal reconstruction shader, spatial denoiser and composite shader all compile and a reconstructed frame renders without a page error.
+
+The real Windows GPU remains the authoritative performance/driver test.
+
+## Next research targets
+
+- true near / room / world / far radiance cascades;
+- richer directional probe representation than the current six-lobe field;
+- world radiance hit cache / surfel cache;
+- many-light importance reservoirs;
+- proper motion vectors for animated geometry;
+- dedicated rough-specular reconstruction;
+- GPU-compute migration.
