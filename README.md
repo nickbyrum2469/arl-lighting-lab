@@ -2,56 +2,73 @@
 
 ARL (Adaptive Radiance Ledger) is an experimental real-time lighting architecture for a custom game engine.
 
-The core idea is to treat lighting as persistent world knowledge — radiance, confidence, variability, age, visibility and **Lighting Debt** — then spend GPU/CPU work where the lighting solution is changing or uncertain instead of refreshing everything every frame.
+The core idea is to treat lighting as persistent world knowledge — radiance, confidence, variability, age, visibility and **Lighting Debt** — then spend GPU/CPU work where lighting is changing or uncertain instead of refreshing everything every frame.
 
-## Current build — ARL v2.0 Reconstruction Renderer
+## Current build — ARL v3.0 Receiver-First Transport
 
-v2.0 is the first build where ARL stops rendering the final image directly from the world probe field.
+v3.0 changes the lighting authority hierarchy rather than only adding more denoising.
 
-The current renderer is layered:
+### Main change
+
+Visible receiver-local transport now gets first authority. Broad world probes are fallback memory.
+
+When receiver-local transport and world-probe transport disagree:
+
+- local/receiver evidence gets priority;
+- world authority is reduced;
+- unsupported broad energy is capped on dark receivers;
+- uncertain world chroma is partially neutralized;
+- temporal history confidence is reduced so a wrong stable cache result is not preserved forever.
+
+### Current stack
 
 - authoritative direct lighting and crisp direct shadows;
 - persistent directional world radiance;
-- fine short-range surface GI for local bounce/contact detail;
+- widened 24-ray receiver-local surface gather (near + room-scale evidence);
+- receiver/world transport agreement test;
+- receiver/world chroma agreement test;
+- receiver-first authority blending;
 - visibility moments and exact near-field rejection;
-- camera-tracking world volume for open-world testing;
-- moving-light and explosion debt scheduling;
-- mirror/specular path kept separate from diffuse GI;
-- **screen-space spatio-temporal reconstruction** for indirect lighting;
-- history reprojection using world position and surface normal validation;
-- history/variance clamp to prevent stale-light smearing;
-- edge-aware spatial denoising that filters indirect light only;
-- shared Direct/ARL exposure, tone mapping and color processing for honest A/B tests;
-- High / Balanced / Performance reconstruction resolutions;
-- global directional sun, volumetric scattering, mirror tests and open-world stress scenes;
-- automated QA tour and adaptive-vs-full-refresh benchmark.
+- camera-tracking world volume;
+- predictive Lighting Debt for moving lights;
+- moving-light and explosion burst scheduling;
+- screen-space spatio-temporal indirect reconstruction;
+- edge-aware indirect denoising;
+- global directional sun;
+- mirror/specular path;
+- volumetric scattering;
+- open-world and chaos stress tests.
 
-### New benchmark scene
+### New debug views
 
-`ARL 2.0 — Production benchmark district` is a connected indoor/outdoor test environment with interior/outdoor transitions, open sunlight, deep cover, continuous geometry, warm and cool dynamic lights, mixed materials, a near-perfect mirror, moving lights, and camera-tracking GI.
+- `DEBUG — Receiver GI`
+- `DEBUG — Receiver/World Authority`
 
-### Reconstruction debug views
+The authority debug encodes receiver authority in red, transport agreement in green, and world-probe authority in blue.
 
-The reconstruction section can show Final composite, Raw indirect, Denoised indirect, or Direct/material base. This makes it possible to tell whether an artifact comes from light transport or reconstruction.
+### Startup behavior
 
-## Architecture
-
-Direct lighting stays authoritative. Persistent world radiance plus fine local surface GI produce a raw indirect buffer. That buffer is temporally reprojected with world-position/normal rejection, history-clamped, edge-aware filtered, and then recombined with the direct/material base through the same final tone/color path used by the Direct baseline.
-
-Lighting Debt remains the scheduler for persistent world updates and is intended to expand into the scheduler for screen probes, radiance-cache entries, reflections, volumetrics and future light/path reservoirs.
+v3.0 also ramps initial probe work over the first frames and staggers early coherence relaxation so direct lighting can appear immediately while ARL warms up instead of front-loading all cache work at startup.
 
 ## Validation
 
-The v2.0 source passes JavaScript syntax validation. It has also been loaded in Chromium with WebGL2 through ANGLE/SwiftShader in an Xvfb test environment. The surface shader, temporal reconstruction shader, spatial denoiser and composite shader all compile and a reconstructed frame renders without a page error.
+- JavaScript parse: PASS
+- WebGL2 context via Chromium ANGLE/SwiftShader: PASS in a minimal shader harness
+- surface shader compile/link: PASS
+- temporal reconstruction shader compile/link: PASS
+- spatial reconstruction shader compile/link: PASS
+- composite shader compile/link: PASS
 
-The real Windows GPU remains the authoritative performance/driver test.
+The sandbox browser currently blocks full local/file navigation by administrator policy, so the complete interactive scene could not be walked there. The Windows GPU/browser remains the authoritative visual/performance test.
 
 ## Next research targets
 
+- surface-attached / hashed world radiance cache;
 - true near / room / world / far radiance cascades;
-- richer directional probe representation than the current six-lobe field;
-- world radiance hit cache / surfel cache;
-- many-light importance reservoirs;
-- proper motion vectors for animated geometry;
+- richer octahedral directional probe representation;
+- screen-probe final gather;
+- many-light reservoirs;
+- separate persistent/transient radiance memories;
+- proper animated-geometry motion vectors;
 - dedicated rough-specular reconstruction;
-- GPU-compute migration.
+- global Lighting Debt work auction across GI, reflections, volumetrics and direct-light reservoirs.
